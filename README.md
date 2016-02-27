@@ -1,22 +1,22 @@
 # etcd-aws-cluster
 
-This is a fork from the [upstream Monsanto repo][], with a few changes. Much
-thanks to @tj-corrigan for doing the actual hard work of [figuring out][] how to
-bootstrap etcd in AWS.
-
-The differences in this fork are:
-
- - Versions tagged in Git.
- - Automatic Docker Hub builds, rebuilding whenever the base `FROM` image is
-   updated, so we'll keep up to date with security patches.
- - Tweaking the script to work better when not using CoreOS.
-
- [upstream Monsanto repo]: https://github.com/MonsantoCo/etcd-aws-cluster
- [figuring out]: http://engineering.monsanto.com/2015/06/12/etcd-clustering/
-
 This container serves to assist in the creation of an etcd (2.x) cluster from an
-AWS auto scaling group. It writes a file to `/etc/sysconfig/etcd-peers` that
-contains parameters for etcd:
+AWS auto scaling group. This is [a fork](#why-fork) from the
+[upstream Monsanto repo][], with a few changes. Much thanks to @tj-corrigan for
+doing the actual hard work of [figuring out][] how to bootstrap etcd in AWS.
+
+## Docker Versions
+
+ - `1`, `1.0`, `latest` - ([master/Dockerfile](https://github.com/building5/etcd-aws-cluster/blob/master/Dockerfile))
+
+## Usage
+
+```
+$ docker run -v /etc/sysconfig/:/etc/sysconfig/ building5/etcd-aws-cluster
+```
+
+It writes a file to `/etc/sysconfig/etcd-peers` that contains parameters for
+etcd:
 
 - `ETCD_INITIAL_CLUSTER_STATE`
   - either `new` or `existing`
@@ -63,16 +63,21 @@ EnvironmentFile=/etc/sysconfig/etcd-peers
     - write a file using the ids/ips obtained from query etcd for members of the
       cluster
 
-
-## Usage
-
-```
-$ docker run -v /etc/sysconfig/:/etc/sysconfig/ building5/etcd-aws-cluster
-```
-
 ## Demo
 
 Monsanto has created a [CloudFormation script][] that shows sample usage of this
-container for creating a simple etcd cluster:
+container for creating a simple etcd cluster.
 
  [CloudFormation script]: https://gist.github.com/tj-corrigan/3baf86051471062b2fb7
+
+## Why fork?
+
+The differences in this fork are:
+
+ - Versions tagged in Git.
+ - Automatic Docker Hub builds, rebuilding whenever the base `FROM` image is
+   updated, so we'll keep up to date with security patches.
+ - More flexability, for cases when not using CoreOS.
+
+ [upstream Monsanto repo]: https://github.com/MonsantoCo/etcd-aws-cluster
+ [figuring out]: http://engineering.monsanto.com/2015/06/12/etcd-clustering/
