@@ -4,3 +4,7 @@
 
  * Forked from MonsantoCo for tagging and automatic rebuilds from Docker hub
  * Updated README
+ * Removed unnecessary volumes from Dockerfile
+ * Switched to Docker maintained alpine image
+ * Added SIGTERM/SIGINT handlers, for stopability
+ * Removed unnecessary packages

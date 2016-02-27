@@ -2,6 +2,10 @@
 pkg="etcd-aws-cluster"
 version="0.5-b5"
 etcd_peers_file_path="/etc/sysconfig/etcd-peers"
+
+# make the script stoppable
+trap 'echo Terminated >&2; exit 1' TERM INT
+
 region=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq --raw-output .region)
 if [[ ! $region ]]; then
     echo "$pkg: failed to get region"
