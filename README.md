@@ -1,6 +1,20 @@
 etcd-aws-cluster
 ==============
 
+This is a fork from the [upstream Monsanto repo][], with a few changes. Much
+thanks to @tj-corrigan for doing the actual hard work of [figuring out][] how to
+bootstrap etcd in AWS.
+
+The differences in this fork are:
+
+ - Versions tagged in Git.
+ - Automatic Docker Hub builds, rebuilding whenever the base `FROM` image is
+   updated, so we'll keep up to date with security patches.
+ - Tweaking the script/container to my liking.
+
+ [upstream Monsanto repo]: https://github.com/MonsantoCo/etcd-aws-cluster
+ [figuring out]: http://engineering.monsanto.com/2015/06/12/etcd-clustering/
+
 This container serves to assist in the creation of an etcd (2.x) cluster from an AWS auto scaling group. It writes a file to /etc/sysconfig/etcd-peers that contains parameters for etcd:
 
 - ETCD_INITIAL_CLUSTER_STATE
@@ -45,9 +59,9 @@ Workflow
 Usage
 -----
 
-```docker run -v /etc/sysconfig/:/etc/sysconfig/ MonsantoCo/etcd-aws-cluster```
+```docker run -v /etc/sysconfig/:/etc/sysconfig/ building5/etcd-aws-cluster```
 
 Demo
 ----
 
-We have created a CloudFomation script that shows sample usage of this container for creating a simple etcd cluster: https://gist.github.com/tj-corrigan/3baf86051471062b2fb7
+Monsanto has created a CloudFomation script that shows sample usage of this container for creating a simple etcd cluster: https://gist.github.com/tj-corrigan/3baf86051471062b2fb7
