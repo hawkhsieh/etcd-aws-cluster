@@ -8,3 +8,5 @@
  * Switched to Docker maintained alpine image
  * Added SIGTERM/SIGINT handlers, for stopability
  * Removed unnecessary packages
+ * Direct all debug output to stderr
+ * Added command line options, and option to send output to stdout
