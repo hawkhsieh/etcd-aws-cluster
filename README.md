@@ -30,6 +30,9 @@ etcd:
   - this is a list of the machines (id and ip) expected to be in the cluster,
     including the new machine
   - e.g., "i-5fc4c9e1=http://10.0.0.1:2380,i-694fad83=http://10.0.0.2:2380"
+- `ETCD_INITIAL_ADVERTISE_PEER_URLS`
+  - this is the URLs this machien should advertise to the cluster
+  - e.g., "http://10.0.0.1:2380"
 
 This file can then be loaded as an EnvironmentFile in an etcd2 drop-in to
 properly configure etcd2:

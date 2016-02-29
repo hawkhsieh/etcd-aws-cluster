@@ -10,3 +10,4 @@
  * Removed unnecessary packages
  * Direct all debug output to stderr
  * Added command line options, and option to send output to stdout
+ * Set `ETCD_INITIAL_ADVERTISE_PEER_URLS`
