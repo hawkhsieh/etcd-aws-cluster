@@ -74,6 +74,7 @@ if [[ ! $ec2_instance_ip ]]; then
 fi
 
 etcd_initial_advertise_peer_urls="http://${ec2_instance_ip}:2380"
+etcd_advertise_client_urls="http://${ec2_instance_ip}:2379"
 
 # If we're in proxy mode we don't have to look this up and expect an env var
 if [[ ! $PROXY_ASG ]]; then
@@ -183,7 +184,10 @@ ETCD_INITIAL_CLUSTER_STATE=existing
 ETCD_NAME=$ec2_instance_id
 ETCD_INITIAL_CLUSTER="$etcd_initial_cluster"
 ETCD_PROXY=$etcd_proxy
+ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
 ETCD_INITIAL_ADVERTISE_PEER_URLS=$etcd_initial_advertise_peer_urls
+ETCD_ADVERTISE_CLIENT_URLS=$etcd_advertise_client_urls
 EOF
 
 # otherwise I was already listed as a member so assume that this is a new cluster
@@ -202,7 +206,10 @@ else
 ETCD_INITIAL_CLUSTER_STATE=new
 ETCD_NAME=$ec2_instance_id
 ETCD_INITIAL_CLUSTER="$etcd_initial_cluster"
+ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
 ETCD_INITIAL_ADVERTISE_PEER_URLS=$etcd_initial_advertise_peer_urls
+ETCD_ADVERTISE_CLIENT_URLS=$etcd_advertise_client_urls
 EOF
 fi
 
