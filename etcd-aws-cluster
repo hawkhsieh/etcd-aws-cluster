@@ -18,6 +18,8 @@ options:
 EOF
 }
 
+exec 6> /dev/null
+
 while test $# -gt 0; do
     case $1 in
         --output=*)
@@ -27,6 +29,9 @@ while test $# -gt 0; do
         -o|--output)
             etcd_peers_file_path=$2
             shift 2
+            ;;
+        -d|--debug)
+            exec 6>&2
             ;;
         -h|-?|--help)
             usage
@@ -99,7 +104,7 @@ if [[ ! $etcd_peer_urls ]]; then
     exit 5
 fi
 
-echo "etcd_peer_urls=$etcd_peer_urls" >&2
+echo "etcd_peer_urls=$etcd_peer_urls" >&6
 
 etcd_existing_peer_urls=
 etcd_existing_peer_names=
@@ -115,36 +120,36 @@ for url in $etcd_peer_urls; do
 
     if [[ $? == 0 && $etcd_members ]]; then
         etcd_good_member_url="$url"
-                echo "etcd_members=$etcd_members" >&2
+                echo "etcd_members=$etcd_members" >&6
         etcd_existing_peer_urls=$(echo "$etcd_members" | jq --raw-output .[][].peerURLs[0])
                 etcd_existing_peer_names=$(echo "$etcd_members" | jq --raw-output .[][].name)
         break
     fi
 done
 
-echo "etcd_good_member_url=$etcd_good_member_url" >&2
-echo "etcd_existing_peer_urls=$etcd_existing_peer_urls" >&2
-echo "etcd_existing_peer_names=$etcd_existing_peer_names" >&2
+echo "etcd_good_member_url=$etcd_good_member_url" >&6
+echo "etcd_existing_peer_urls=$etcd_existing_peer_urls" >&6
+echo "etcd_existing_peer_names=$etcd_existing_peer_names" >&6
 
 # if I am not listed as a member of the cluster assume that this is a existing cluster
 # this will also be the case for a proxy situation
 if [[ $etcd_existing_peer_urls && $etcd_existing_peer_names != *"$ec2_instance_id"* ]]; then
-    echo "joining existing cluster" >&2
+    echo "joining existing cluster" >&6
 
     # eject bad members from cluster
     peer_regexp=$(echo "$etcd_peer_urls" | sed 's/^.*https\{0,1\}:\/\/\([0-9.]*\):[0-9]*.*$/contains(\\"\/\/\1:\\")/' | xargs | sed 's/  */ or /g')
     if [[ ! $peer_regexp ]]; then
-        echo "$pkg: failed to create peer regular expression" >&2
+        echo "$pkg: failed to create peer regular expression" >&6
         exit 6
     fi
 
-    echo "peer_regexp=$peer_regexp" >&2
+    echo "peer_regexp=$peer_regexp" >&6
     bad_peer=$(echo "$etcd_members" | jq --raw-output ".[] | map(select(.peerURLs[] | $peer_regexp | not )) | .[].id")
-    echo "bad_peer=$bad_peer" >&2
+    echo "bad_peer=$bad_peer" >&6
 
     if [[ $bad_peer ]]; then
         for bp in $bad_peer; do
-            echo "removing bad peer $bp" >&2
+            echo "removing bad peer $bp" >&6
             status=$(curl $ETCD_CURLOPTS -f -s -w %{http_code} "$etcd_good_member_url/v2/members/$bp" -XDELETE)
             if [[ $status != $delete_ok ]]; then
                 echo "$pkg: ERROR: failed to remove bad peer: $bad_peer, return code $status." >&2
@@ -182,7 +187,7 @@ if [[ $etcd_existing_peer_urls && $etcd_existing_peer_names != *"$ec2_instance_i
     cat > "$etcd_peers_file_path" <<EOF
 ETCD_INITIAL_CLUSTER_STATE=existing
 ETCD_NAME=$ec2_instance_id
-ETCD_INITIAL_CLUSTER="$etcd_initial_cluster"
+ETCD_INITIAL_CLUSTER=$etcd_initial_cluster
 ETCD_PROXY=$etcd_proxy
 ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
 ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
@@ -205,7 +210,7 @@ else
     cat > "$etcd_peers_file_path" <<EOF
 ETCD_INITIAL_CLUSTER_STATE=new
 ETCD_NAME=$ec2_instance_id
-ETCD_INITIAL_CLUSTER="$etcd_initial_cluster"
+ETCD_INITIAL_CLUSTER=$etcd_initial_cluster
 ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
 ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
 ETCD_INITIAL_ADVERTISE_PEER_URLS=$etcd_initial_advertise_peer_urls

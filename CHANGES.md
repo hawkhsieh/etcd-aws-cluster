@@ -11,3 +11,5 @@
  * Direct all debug output to stderr
  * Added command line options, and option to send output to stdout
  * Set `ETCD_INITIAL_ADVERTISE_PEER_URLS`
+ * Remove quotes from `ETCD_INITIAL_CLUSTER`, so it can be used by Docker's
+   `--env-file`
