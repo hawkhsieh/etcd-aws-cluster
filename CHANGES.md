@@ -1,6 +1,6 @@
 # etcd-aws-cluster
 
-## vNEXT (????-??-??)
+## v1.0 (2016-03-11)
 
  * Forked from MonsantoCo for tagging and automatic rebuilds from Docker hub
  * Updated README
