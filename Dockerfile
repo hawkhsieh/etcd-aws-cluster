@@ -17,3 +17,4 @@ RUN npm --loglevel warn run build
 
 USER node
 ENTRYPOINT ["node", "lib/index.js"]
+#ENTRYPOINT ["node", "server.js"]
