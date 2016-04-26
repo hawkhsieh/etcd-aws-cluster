@@ -73,9 +73,6 @@ metadata.request('/latest/dynamic/instance-identity/document', (err, document) =
 
       ec2.describeInstances({ InstanceIds: peerInstanceIds }, (err, data) => {
         failOn(err);
-        var addresses = _(data.Reservations)
-          .flatMap('Instances').flatMap('NetworkInterfaces').map('PrivateIpAddress').valueOf();
-
         var peers = _(data.Reservations).flatMap('Instances').map(instance => {
           var privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
           var instanceId = instance.InstanceId;
@@ -84,6 +81,8 @@ metadata.request('/latest/dynamic/instance-identity/document', (err, document) =
 
           return { instanceId, clientURL, peerURL };
         }).valueOf();
+
+        console.error('found peers', JSON.stringify(peers, null, 2));
 
         async.reduce(_.map(peers, 'clientURL'), null, (currentCluster, client, done) => {
           if (currentCluster) {
@@ -112,6 +111,9 @@ metadata.request('/latest/dynamic/instance-identity/document', (err, document) =
           } else {
             var memberUrl = currentCluster.memberUrl;
             var members = currentCluster.members;
+
+            console.error('memberUrl', memberUrl);
+            console.error('members', JSON.stringify(members, null, 2));
 
             var badMembers = _.filter(members, (member) => !_.includes(peerInstanceIds, member.name));
             async.eachSeries(badMembers, (member, done) => {
