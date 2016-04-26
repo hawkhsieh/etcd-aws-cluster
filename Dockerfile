@@ -1,15 +1,18 @@
-FROM alpine:3.3
+FROM node:4
 MAINTAINER David M. Lee <leedm777@yahoo.com>
 
-RUN apk --update add \
-        python \
-        py-pip \
-        jq \
-        curl \
-        bash \
-    && pip install --upgrade awscli \
-    && rm -rf /var/cache/apk/*
+RUN npm install -g --loglevel http npm@3
 
-COPY etcd-aws-cluster /etcd-aws-cluster
+RUN useradd --system --create-home node && \
+    mkdir /usr/src/app && \
+    chown node:node /usr/src/app
 
-ENTRYPOINT ["/etcd-aws-cluster"]
+# trickery to only run npm install when package.json changes
+WORKDIR /usr/src/app
+COPY package.json /usr/src/app/
+RUN npm --loglevel http install
+
+COPY . /usr/src/app
+
+USER node
+ENTRYPOINT ["node", "server.js"]

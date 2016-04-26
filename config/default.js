@@ -1,4 +1,10 @@
 module.exports = {
-  clientPort: 2379,
-  peerPort: 2380
-}
+  client: {
+    port: 2379,
+    scheme: 'http'
+  },
+  peer: {
+    port: 2380,
+    scheme: 'http'
+  }
+};
