@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-process.env.NODE_CONFIG_DIR = __dirname;
-
 var AWS = require('aws-sdk');
-var async = require('async');
-var config = require('config');
 var _ = require('lodash');
+var async = require('async');
+var path = require('path');
 var request = require('request').defaults({ json: true });
+
+process.env.NODE_CONFIG_DIR = path.join(__dirname, 'config');
+var config = require('config');
 
 var metadata = new AWS.MetadataService();
 
