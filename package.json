@@ -4,10 +4,12 @@
   "description": "This container serves to assist in the creation of an etcd (2.x) cluster from an AWS auto scaling group.",
   "main": "index.js",
   "bin": {
-    "etcd-aws-cluster": "./server.js"
+    "etcd-aws-cluster": "./bin/etcd-aws-cluster.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "mkdir -p lib/ && babel --source-maps true --out-dir lib/ src/",
+    "clean": "rm -rf lib/",
+    "test": "eslint ."
   },
   "repository": {
     "type": "git",
@@ -21,7 +23,6 @@
   },
   "homepage": "https://github.com/building5/etcd-aws-cluster#readme",
   "devDependencies": {
-    "assert-rejected": "^1.1.0",
     "babel-cli": "^6.7.7",
     "babel-core": "^6.7.7",
     "babel-eslint": "^6.0.4",
@@ -32,13 +33,11 @@
     "eslint-config-airbnb": "^7.0.0",
     "eslint-plugin-babel": "^3.2.0",
     "eslint-plugin-jsx-a11y": "^0.6.2",
-    "eslint-plugin-react": "^4.3.0",
-    "mocha": "^2.4.5"
+    "eslint-plugin-react": "^4.3.0"
   },
   "dependencies": {
     "async": "^2.0.0-rc.3",
     "aws-sdk": "^2.3.5",
-    "config": "^1.20.1",
     "lodash": "^4.11.1",
     "node-fetch": "^1.5.1",
     "request": "^2.72.0"

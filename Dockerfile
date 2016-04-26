@@ -13,6 +13,7 @@ COPY package.json /usr/src/app/
 RUN npm --loglevel http install
 
 COPY . /usr/src/app
+RUN npm --loglevel warn run build
 
 USER node
-ENTRYPOINT ["node", "server.js"]
+ENTRYPOINT ["node", "lib/index.js"]
