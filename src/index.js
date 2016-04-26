@@ -12,15 +12,15 @@ const request = _request.defaults({ json: true });
 const config = {
   client: {
     port: 2379,
-    scheme: 'http'
+    scheme: 'http',
   },
   peer: {
     port: 2380,
-    scheme: 'http'
-  }
+    scheme: 'http',
+  },
 };
 
-var metadata = new AWS.MetadataService();
+const metadata = new AWS.MetadataService();
 
 function fail(msg) {
   console.error(msg);
@@ -39,11 +39,11 @@ function go() {
     failOn(err);
     document = JSON.parse(document);
 
-    var region = document.region;
-    var instanceId = document.instanceId;
-    var instanceIp = document.privateIp;
-    var myPeerUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
-    var myClientUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
+    const region = document.region;
+    const instanceId = document.instanceId;
+    const instanceIp = document.privateIp;
+    const myPeerUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
+    const myClientUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
 
     console.log(`export ETCD_NAME=${instanceId}`);
     console.log(`export ETCD_LISTEN_PEER_URLS=${myPeerUrl}`);
@@ -51,14 +51,14 @@ function go() {
     console.log(`export ETCD_LISTEN_CLIENT_URLS=${myClientUrl}`);
     console.log(`export ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
 
-    var autoscaling = new AWS.AutoScaling({
+    const autoscaling = new AWS.AutoScaling({
       apiVersion: '2011-01-01',
-      region
+      region,
     });
 
-    var ec2 = new AWS.EC2({
+    const ec2 = new AWS.EC2({
       apiVersion: '2015-10-01',
-      region
+      region,
     });
 
     console.error('Finding ASG for', instanceId);
@@ -67,14 +67,14 @@ function go() {
       if (_.isEmpty(data.AutoScalingInstances)) {
         fail('Not a member of an auto scaling group');
       }
-      var asgName = data.AutoScalingInstances[0].AutoScalingGroupName;
+      const asgName = data.AutoScalingInstances[0].AutoScalingGroupName;
       console.error('Finding instances in', asgName);
 
       autoscaling.describeAutoScalingGroups({ AutoScalingGroupNames: [asgName] }, (err, data) => {
         failOn(err);
-        var peers = data.AutoScalingGroups[0].Instances;
-        var peerInstanceIds = _(peers)
-          .filter(p => p.LifecycleState === "InService")
+        const peers = data.AutoScalingGroups[0].Instances;
+        const peerInstanceIds = _(peers)
+          .filter(p => p.LifecycleState === 'InService')
           .map('InstanceId')
           .valueOf();
 
@@ -84,11 +84,11 @@ function go() {
 
         ec2.describeInstances({ InstanceIds: peerInstanceIds }, (err, data) => {
           failOn(err);
-          var peers = _(data.Reservations).flatMap('Instances').map(instance => {
-            var privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
-            var instanceId = instance.InstanceId;
-            var clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
-            var peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
+          const peers = _(data.Reservations).flatMap('Instances').map(instance => {
+            const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
+            const instanceId = instance.InstanceId;
+            const clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
+            const peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
 
             return { instanceId, clientURL, peerURL };
           }).valueOf();
@@ -101,7 +101,7 @@ function go() {
               return;
             }
 
-            var memberUrl = `${client}/v2/members`;
+            const memberUrl = `${client}/v2/members`;
             request(memberUrl, (err, res) => {
               if (err) {
                 // we're bootstrapping the cluster, so we can ignore errors
@@ -110,23 +110,26 @@ function go() {
               }
 
               console.error('found existing cluster');
-              done(null, { memberUrl, members: res.body.members })
-            })
+              done(null, { memberUrl, members: res.body.members });
+            });
           }, (err, currentCluster) => {
             failOn(err);
 
             if (_.isEmpty(currentCluster)) {
+              const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
+
               console.error('creating new cluster');
               console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
-              console.log(`export ETCD_INITIAL_CLUSTER=${_.map(peers, p => `${p.instanceId}=${p.peerURL}`)}`)
+              console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
             } else {
-              var memberUrl = currentCluster.memberUrl;
-              var members = currentCluster.members;
+              const memberUrl = currentCluster.memberUrl;
+              let members = currentCluster.members;
 
               console.error('memberUrl', memberUrl);
               console.error('members', JSON.stringify(members, null, 2));
 
-              var badMembers = _.filter(members, (member) => !_.includes(peerInstanceIds, member.name));
+              const badMembers =
+                _.filter(members, (member) => !_.includes(peerInstanceIds, member.name));
               async.eachSeries(badMembers, (member, done) => {
                 console.error(`Removing bad member ${member.name} (${member.id})`);
                 request.delete(`${memberUrl}/v2/members/${member.id}`, (e, r) => {
@@ -149,21 +152,22 @@ function go() {
                     url: memberUrl,
                     body: {
                       peerURLs: [myPeerUrl],
-                      name: instanceId
-                    }
+                      name: instanceId,
+                    },
                   }, (err, res) => {
                     failOn(err);
                     if (res.statusCode !== 200 && res.statusCode !== 409) {
                       fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
                     }
 
+                    const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
                     console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
-                    console.log(`export ETCD_INITIAL_CLUSTER=${_.map(members, m => `${m.name}=${m.peerURLs[0]}`)}`)
+                    console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
                   });
                 });
               });
             }
-          })
+          });
         });
       });
     });
