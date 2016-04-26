@@ -23,9 +23,9 @@ function fail(msg) {
   process.exit(1);
 }
 
+console.error('Loading instance metadata');
 metadata.request('/latest/dynamic/instance-identity/document', (err, document) => {
   failOn(err);
-  console.error(document);
   document = JSON.parse(document);
 
   var region = document.region;
