@@ -2,7 +2,7 @@
 
 This container serves to assist in the creation of an etcd (2.x) cluster from an
 AWS auto scaling group. This is [a fork](#why-fork) from the
-[upstream Monsanto repo][], with a few changes. Much thanks to @tj-corrigan for
+[upstream Monsanto repo][], ported to Node.js. Much thanks to @tj-corrigan for
 doing the actual hard work of [figuring out][] how to bootstrap etcd in AWS.
 
 ## Docker Versions
