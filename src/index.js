@@ -6,6 +6,7 @@ import AWS from 'aws-sdk';
 import _ from 'lodash';
 import _request from 'request';
 import async from 'async';
+import fetch from 'node-fetch';
 import { install as installSourceMapSupport } from 'source-map-support';
 
 installSourceMapSupport();
@@ -50,13 +51,17 @@ const go = async function go() {
   const region = document.region;
   const instanceId = document.instanceId;
   const instanceIp = document.privateIp;
+  // advertise the instance private address
   const myPeerUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
-  const myClientUrl = `${config.peer.scheme}://${instanceIp}:${config.peer.port}`;
+  const myClientUrl = `${config.client.scheme}://${instanceIp}:${config.client.port}`;
+  // listen on the any address, so it can be reached on localhost
+  const myPeerListenUrl = `${config.peer.scheme}://0.0.0.0:${config.peer.port}`;
+  const myClientListenUrl = `${config.client.scheme}://0.0.0.0:${config.client.port}`;
 
   console.log(`export ETCD_NAME=${instanceId}`);
-  console.log(`export ETCD_LISTEN_PEER_URLS=${myPeerUrl}`);
+  console.log(`export ETCD_LISTEN_PEER_URLS=${myPeerListenUrl}`);
+  console.log(`export ETCD_LISTEN_CLIENT_URLS=${myClientListenUrl}`);
   console.log(`export ETCD_INITIAL_ADVERTISE_PEER_URLS=${myPeerUrl}`);
-  console.log(`export ETCD_LISTEN_CLIENT_URLS=${myClientUrl}`);
   console.log(`export ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
 
   const autoscaling = new AWS.AutoScaling({
@@ -104,79 +109,86 @@ const go = async function go() {
 
   console.error('found peers', JSON.stringify(peers, null, 2));
 
-  async.reduce(_.map(peers, 'clientURL'), null, (currentCluster, client, done) => {
-    if (currentCluster) {
-      done(currentCluster);
-      return;
+  const currentCluster = await _.reduce(_.map(peers, 'clientURL'), async (_prior, client) => {
+    const prior = await _prior;
+
+    if (prior) {
+      return prior;
     }
 
-    const memberUrl = `${client}/v2/members`;
-    request(memberUrl, (err, res) => {
-      if (err) {
-        // we're bootstrapping the cluster, so we can ignore errors
-        done();
-        return;
+    const url = `${client}/v2/members`;
+    try {
+      console.error('Trying', url);
+      const res = await fetch(url);
+
+      if (res.status !== 200) {
+        console.error('  got', res.status);
+        return null;
       }
 
-      console.error('found existing cluster');
-      done(null, { memberUrl, members: res.body.members });
-    });
-  }, (err, currentCluster) => {
-    failOn(err);
+      const body = await res.json();
+      return { memberUrl: url, members: body.members };
+    } catch (err) {
+      // if we can't reach this peer, we could be bootstrapping.
+      // return null and try the next one.
+      console.error('  got', err);
+      return null;
+    }
+  }, null);
 
-    if (_.isEmpty(currentCluster)) {
-      const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
+  console.error('currentCluster', currentCluster);
+  if (_.isEmpty(currentCluster)) {
+    const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
 
-      console.error('creating new cluster');
-      console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
-      console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
-    } else {
-      const memberUrl = currentCluster.memberUrl;
-      let members = currentCluster.members;
+    console.error('creating new cluster');
+    console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
+    console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
+  } else {
+    const memberUrl = currentCluster.memberUrl;
+    let members = currentCluster.members;
 
-      console.error('memberUrl', memberUrl);
-      console.error('members', JSON.stringify(members, null, 2));
+    console.error('memberUrl', memberUrl);
+    console.error('members', JSON.stringify(members, null, 2));
 
-      const badMembers =
-        _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
-      async.eachSeries(badMembers, (member, done) => {
-        console.error(`Removing bad member ${member.name} (${member.id})`);
-        request.delete(`${memberUrl}/v2/members/${member.id}`, (e, r) => {
-          failOn(e);
-          if (r.statusCode !== 204) {
-            fail(`Error deleting bad member ${JSON.stringify(r.body)}`);
-          }
-          done(e, r);
-        });
-      }, (err) => {
+    const badMembers =
+      _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
+    async.eachSeries(badMembers, (member, done) => {
+      console.error(`Removing bad member ${member.name} (${member.id})`);
+      request.delete(`${memberUrl}/v2/members/${member.id}`, (e, r) => {
+        failOn(e);
+        if (r.statusCode !== 204) {
+          fail(`Error deleting bad member ${JSON.stringify(r.body)}`);
+        }
+        done(e, r);
+      });
+    }, (err) => {
+      failOn(err);
+      console.error('joining existing cluster');
+
+      // re-fetch the cluster list
+      request(memberUrl, (err, res) => {
         failOn(err);
-        console.error('joining existing cluster');
+        members = res.body.members;
 
-        // re-fetch the cluster list
-        request(memberUrl, (err, res) => {
+        request.post({
+          url: memberUrl,
+          body: {
+            peerURLs: [myPeerUrl],
+            name: instanceId,
+          },
+        }, (err, res) => {
           failOn(err);
-          members = res.body.members;
+          if (res.statusCode !== 200 && res.statusCode !== 409) {
+            fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
+          }
 
-          request.post({
-            url: memberUrl,
-            body: {
-              peerURLs: [myPeerUrl],
-              name: instanceId,
-            },
-          }, (err, res) => {
-            failOn(err);
-            if (res.statusCode !== 200 && res.statusCode !== 409) {
-              fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
-            }
-
-            const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
-            console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
-            console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
-          });
+          const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
+          console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
+          console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
         });
       });
-    }
-  });
+    });
+  }
 };
 
 go().catch(failOn);
