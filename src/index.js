@@ -67,113 +67,116 @@ const go = async function go() {
   });
 
   console.error('Finding ASG for', instanceId);
-  const data = await autoscaling.describeAutoScalingInstances({ InstanceIds: [instanceId] }).promise();
-    if (_.isEmpty(data.AutoScalingInstances)) {
-      fail('Not a member of an auto scaling group');
+  const { AutoScalingInstances } =
+    await autoscaling.describeAutoScalingInstances({ InstanceIds: [instanceId] })
+      .promise();
+
+  if (_.isEmpty(AutoScalingInstances)) {
+    fail('Not a member of an auto scaling group');
+  }
+  const asgName = AutoScalingInstances[0].AutoScalingGroupName;
+  console.error('Finding instances in', asgName);
+
+  const { AutoScalingGroups } =
+    await autoscaling.describeAutoScalingGroups({ AutoScalingGroupNames: [asgName] })
+      .promise();
+  const peers = AutoScalingGroups[0].Instances;
+  const peerInstanceIds = _(peers)
+    .filter(p => p.LifecycleState === 'InService')
+    .map('InstanceId')
+    .valueOf();
+
+  if (_.isEmpty(peerInstanceIds)) {
+    fail('unable to find members of auto scaling group');
     }
-    const asgName = data.AutoScalingInstances[0].AutoScalingGroupName;
-    console.error('Finding instances in', asgName);
 
-    autoscaling.describeAutoScalingGroups({ AutoScalingGroupNames: [asgName] }, (err, data) => {
+  ec2.describeInstances({ InstanceIds: peerInstanceIds }, (err, data) => {
       failOn(err);
-      const peers = data.AutoScalingGroups[0].Instances;
-      const peerInstanceIds = _(peers)
-        .filter(p => p.LifecycleState === 'InService')
-        .map('InstanceId')
-        .valueOf();
+    const peers = _(data.Reservations).flatMap('Instances').map(instance => {
+      const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
+      const instanceId = instance.InstanceId;
+      const clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
+      const peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
 
-      if (_.isEmpty(peerInstanceIds)) {
-        fail('unable to find members of auto scaling group');
+      return { instanceId, clientURL, peerURL };
+    }).valueOf();
+
+    console.error('found peers', JSON.stringify(peers, null, 2));
+
+    async.reduce(_.map(peers, 'clientURL'), null, (currentCluster, client, done) => {
+      if (currentCluster) {
+        done(currentCluster);
+        return;
       }
 
-      ec2.describeInstances({ InstanceIds: peerInstanceIds }, (err, data) => {
-        failOn(err);
-        const peers = _(data.Reservations).flatMap('Instances').map(instance => {
-          const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
-          const instanceId = instance.InstanceId;
-          const clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
-          const peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
-
-          return { instanceId, clientURL, peerURL };
-        }).valueOf();
-
-        console.error('found peers', JSON.stringify(peers, null, 2));
-
-        async.reduce(_.map(peers, 'clientURL'), null, (currentCluster, client, done) => {
-          if (currentCluster) {
-            done(currentCluster);
+      const memberUrl = `${client}/v2/members`;
+      request(memberUrl, (err, res) => {
+        if (err) {
+          // we're bootstrapping the cluster, so we can ignore errors
+          done();
             return;
           }
 
-          const memberUrl = `${client}/v2/members`;
-          request(memberUrl, (err, res) => {
-            if (err) {
-              // we're bootstrapping the cluster, so we can ignore errors
-              done();
-              return;
+        console.error('found existing cluster');
+        done(null, { memberUrl, members: res.body.members });
+      });
+    }, (err, currentCluster) => {
+      failOn(err);
+
+      if (_.isEmpty(currentCluster)) {
+        const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
+
+        console.error('creating new cluster');
+        console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
+        console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
+      } else {
+        const memberUrl = currentCluster.memberUrl;
+        let members = currentCluster.members;
+
+        console.error('memberUrl', memberUrl);
+        console.error('members', JSON.stringify(members, null, 2));
+
+        const badMembers =
+          _.filter(members, (member) => !_.includes(peerInstanceIds, member.name));
+        async.eachSeries(badMembers, (member, done) => {
+          console.error(`Removing bad member ${member.name} (${member.id})`);
+          request.delete(`${memberUrl}/v2/members/${member.id}`, (e, r) => {
+            failOn(e);
+            if (r.statusCode !== 204) {
+              fail(`Error deleting bad member ${JSON.stringify(r.body)}`);
             }
-
-            console.error('found existing cluster');
-            done(null, { memberUrl, members: res.body.members });
+            done(e, r);
           });
-        }, (err, currentCluster) => {
+        }, (err) => {
           failOn(err);
+          console.error('joining existing cluster');
 
-          if (_.isEmpty(currentCluster)) {
-            const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
-
-            console.error('creating new cluster');
-            console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
-            console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
-          } else {
-            const memberUrl = currentCluster.memberUrl;
-            let members = currentCluster.members;
-
-            console.error('memberUrl', memberUrl);
-            console.error('members', JSON.stringify(members, null, 2));
-
-            const badMembers =
-              _.filter(members, (member) => !_.includes(peerInstanceIds, member.name));
-            async.eachSeries(badMembers, (member, done) => {
-              console.error(`Removing bad member ${member.name} (${member.id})`);
-              request.delete(`${memberUrl}/v2/members/${member.id}`, (e, r) => {
-                failOn(e);
-                if (r.statusCode !== 204) {
-                  fail(`Error deleting bad member ${JSON.stringify(r.body)}`);
-                }
-                done(e, r);
-              });
-            }, (err) => {
+          // re-fetch the cluster list
+          request(memberUrl, (err, res) => {
               failOn(err);
-              console.error('joining existing cluster');
+            members = res.body.members;
 
-              // re-fetch the cluster list
-              request(memberUrl, (err, res) => {
+            request.post({
+              url: memberUrl,
+              body: {
+                peerURLs: [myPeerUrl],
+                name: instanceId,
+              },
+            }, (err, res) => {
                 failOn(err);
-                members = res.body.members;
+              if (res.statusCode !== 200 && res.statusCode !== 409) {
+                fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
+              }
 
-                request.post({
-                  url: memberUrl,
-                  body: {
-                    peerURLs: [myPeerUrl],
-                    name: instanceId,
-                  },
-                }, (err, res) => {
-                  failOn(err);
-                  if (res.statusCode !== 200 && res.statusCode !== 409) {
-                    fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
-                  }
-
-                  const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
-                  console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
-                  console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
-                });
+              const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
+              console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
+              console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
               });
             });
-          }
         });
+      }
       });
     });
-}
+};
 
 go();
