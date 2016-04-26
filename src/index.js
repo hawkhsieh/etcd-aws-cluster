@@ -6,7 +6,7 @@ import AWS from 'aws-sdk';
 import _ from 'lodash';
 import _request from 'request';
 import fetch from 'node-fetch';
-import { install as installSourceMapSupport } from 'source-map-support';
+import {install as installSourceMapSupport} from 'source-map-support';
 
 installSourceMapSupport();
 
@@ -146,11 +146,11 @@ const go = async function go() {
     let members = currentCluster.members;
 
     console.error('memberUrl', memberUrl);
-    console.error('members', JSON.stringify(members, null, 2));
 
     const badMembers =
       _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
     for (const member of badMembers) {
+      console.error('Removing bad member', member);
       const res = await fetch(`${memberUrl}/v2/members/${member.id}`, { method: 'DELETE' });
       if (res.status !== 204) {
         fail(`Error deleting bad member ${await res.text()}`);
@@ -158,29 +158,31 @@ const go = async function go() {
     }
     console.error('joining existing cluster');
 
-    // re-fetch the cluster list
-    request(memberUrl, (err, res) => {
-      failOn(err);
-      members = res.body.members;
-
-      request.post({
-        url: memberUrl,
-        body: {
-          peerURLs: [myPeerUrl],
-          name: instanceId,
-        },
-      }, (err, res) => {
-        failOn(err);
-        // 409 == already added
-        if (res.statusCode !== 200 && res.statusCode !== 409) {
-          fail(`Error joining cluster: ${JSON.stringify(res.body)}`);
-        }
-
-        const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
-        console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
-        console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
-      });
+    const addRes = await fetch(memberUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peerURLs: [myPeerUrl],
+        name: instanceId,
+      }),
     });
+
+    if (addRes.statusCode !== 200 && addRes.status !== 409) {
+      fail(`Error joining cluster: ${addRes.status} ${JSON.stringify(await addRes.text())}`);
+    }
+
+    // re-fetch the cluster list
+    const memberRes = await fetch(memberUrl);
+    if (memberRes.status !== 200) {
+      fail(`Error re-fetching member list: ${await memberRes.text()}`);
+    }
+    members = (await memberRes.json()).members;
+
+    console.error('members', JSON.stringify(members, null, 2));
+
+    const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
+    console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
+    console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
   }
 };
 
