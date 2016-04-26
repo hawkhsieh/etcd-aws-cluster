@@ -67,8 +67,7 @@ const go = async function go() {
   });
 
   console.error('Finding ASG for', instanceId);
-  autoscaling.describeAutoScalingInstances({ InstanceIds: [instanceId] }, (err, data) => {
-    failOn(err);
+  const data = await autoscaling.describeAutoScalingInstances({ InstanceIds: [instanceId] }).promise();
     if (_.isEmpty(data.AutoScalingInstances)) {
       fail('Not a member of an auto scaling group');
     }
@@ -175,7 +174,6 @@ const go = async function go() {
         });
       });
     });
-  });
 }
 
 go();
