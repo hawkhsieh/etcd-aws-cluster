@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+process.env.NODE_CONFIG_DIR = __dirname;
+
 var AWS = require('aws-sdk');
 var async = require('async');
 var config = require('config');
