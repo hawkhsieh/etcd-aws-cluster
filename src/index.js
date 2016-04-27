@@ -93,6 +93,11 @@ const go = async function go() {
     await ec2.describeInstances({ InstanceIds: asgInstanceIds }).promise();
   const asgInstances = _(Reservations).flatMap('Instances').map(instance => {
     const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
+
+    if (!privateIp) {
+      fail(`Peer does not yet have private IP ${instance.InstanceId}`);
+    }
+
     const clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
     const peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
 
