@@ -142,17 +142,20 @@ const go = async function go() {
     // process documented at https://coreos.com/etcd/docs/latest/runtime-configuration.html#add-a-new-member
     console.error('memberUrl', memberUrl);
 
-    // if we're already a member of the cluster, there's a good chance that it's lost quorum,
-    // and is just waiting for us to join. Skip removing bad members (since we can't if it has
-    // lost quorum) and adding self (since we're already in the cluster).
-    const alreadyJoined = _.find(members, m => m.name === instanceId);
+    // If we're already in the cluster, we could get a 500 back if the cluster has lost quorum
+    // waiting on us to join. Best case is that we would get back a 409, anyways.
+    const alreadyJoined = _.find(members, m => _.includes(m.peerURLs, myPeerUrl));
     if (alreadyJoined) {
       console.error(`Already in cluster with id ${alreadyJoined.id}`);
+
+      // if we were added to the cluster, but didn't actually start etcd, then it wouldn't have
+      // learned our name. Go ahead and set it to what we expect it to be.
+      alreadyJoined.name = instanceId;
     } else {
-      // If there are any members in the cluster that aren't in the ASG, those are
-      // likely decommissioned instances that need to be cleaned up.
-      const badMembers =
-        _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
+      // If we don't clean up old instances before joining, we run the risk of causing the cluster
+      // to lose quorum.
+      const [goodMembers, badMembers] =
+        _.partition(members, m => _.includes(asgInstanceIds, m.name));
       for (const member of badMembers) {
         console.error('Removing bad member', member);
         const res = await fetch(`${memberUrl}/${member.id}`, { method: 'DELETE' });
@@ -162,7 +165,7 @@ const go = async function go() {
           // that would be good. If not, you'll have to recover the cluster.
           // See https://github.com/coreos/etcd/blob/master/Documentation/admin_guide.md#disaster-recovery
           // And some discussion at https://github.com/coreos/etcd/issues/3505
-          fail(`Error deleting bad member ${await res.text()}`);
+          fail(`Error deleting bad member ${res.status} ${await res.text()}`);
         }
       }
 
@@ -171,29 +174,28 @@ const go = async function go() {
       const add = await fetch(memberUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          peerURLs: [myPeerUrl],
-          name: instanceId,
-        }),
+        body: JSON.stringify({ peerURLs: [myPeerUrl] }),
       });
 
-      if (add.status !== 201 && add.status !== 409) {
+      if (add.status !== 201) {
         fail(`Error joining cluster: ${add.status} ${JSON.stringify(await add.text())}`);
       }
 
       console.error(`  got id ${(await add.json()).id}`);
 
-      console.error('Getting existing cluster');
-      const memberRes = await fetch(memberUrl);
-      if (memberRes.status !== 200) {
-        fail(`Error re-fetching member list: ${await memberRes.text()}`);
-      }
-      members = (await memberRes.json()).members;
+      // remove bad members from the members list, and add ourselves.
+      goodMembers.push({ name: instanceId, peerURLs: [myPeerUrl] });
+      members = goodMembers;
     }
 
-    console.error('  members', JSON.stringify(members, null, 2));
+    console.error('Members', JSON.stringify(members, null, 2));
 
-    const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
+    const invalidMembers = _.filter(members, m => (!m.name || _.isEmpty(m.peerURLs)));
+    if (!_.isEmpty(invalidMembers)) {
+      fail(`Cannot join cluster with invalid members ${JSON.stringify(invalidMembers, null, 2)}`);
+    }
+
+    const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`).join(',');
     console.log('ETCD_INITIAL_CLUSTER_STATE=existing');
     console.log(`ETCD_INITIAL_CLUSTER=${cluster}`);
   }
