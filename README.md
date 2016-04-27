@@ -7,39 +7,84 @@ doing the actual hard work of [figuring out][] how to bootstrap etcd in AWS.
 
 ## Docker Versions
 
- - `1`, `1.0`, `latest` - ([master/Dockerfile](https://github.com/building5/etcd-aws-cluster/blob/master/Dockerfile))
+ - `1`, `1.0` - ([1/Dockerfile](https://github.com/building5/etcd-aws-cluster/blob/1/Dockerfile))
+ - `2`, `2.0`, `latest` - ([master/Dockerfile](https://github.com/building5/etcd-aws-cluster/blob/master/Dockerfile))
 
 ## Usage
 
-```
-$ docker run -v /etc/sysconfig/:/etc/sysconfig/ building5/etcd-aws-cluster
-```
-
-It writes a file to `/etc/sysconfig/etcd-peers` that contains parameters for
-etcd:
-
-- `ETCD_INITIAL_CLUSTER_STATE`
-  - either `new` or `existing`
-  - used to specify whether we are creating a new cluster or joining an existing
-    one
-- `ETCD_NAME`
-  - the name of the machine joining the etcd cluster
-  - this is obtained by getting the instance if from amazon of the host (e.g.
-    i-6q94fad83)
-- `ETCD_INITIAL_CLUSTER`
-  - this is a list of the machines (id and ip) expected to be in the cluster,
-    including the new machine
-  - e.g., "i-5fc4c9e1=http://10.0.0.1:2380,i-694fad83=http://10.0.0.2:2380"
-- `ETCD_INITIAL_ADVERTISE_PEER_URLS`
-  - this is the URLs this machien should advertise to the cluster
-  - e.g., "http://10.0.0.1:2380"
-
-This file can then be loaded as an EnvironmentFile in an etcd2 drop-in to
-properly configure etcd2:
+This container should be run on the instance in the autoscaling group you wish
+to run the etcd node on. It will autodiscover the current status of the cluster,
+and write a set of etcd params to stdout.
 
 ```
-[Service]
-EnvironmentFile=/etc/sysconfig/etcd-peers
+$ docker run building5/etcd-aws-cluster
+```
+
+For cases where you cannot run a docker container (like starting up an etcd
+cluster you want to point you docker cluster at), you can also run from npm
+
+```
+$ npm install -g etcd-aws-cluster
+$ etcd-aws-cluster
+```
+
+This output could be:
+
+ * written to `/etc/sysconfig/etcd-cluster` for systemd startup. The output can
+   then be loaded as an `EnvironmentFile` in an etcd2 drop-in to properly
+   configure etcd2:
+
+   ```
+   [Service]
+   EnvironmentFile=/etc/sysconfig/etcd-cluster
+   ```
+ * written to (or `eval` from) `/etc/default/etcd` for upstart startup
+   ```
+   eval $(docker run building5/etcd-aws-cluster)
+   ```
+ * used with `docker run --env-file` for running in a docker container
+   ```
+   $ docker run --env-file <(docker run building5/etcd-aws-cluster) etcd
+   ```
+
+The following params are written:
+
+ * `ETCD_NAME`
+   * Node name; uses EC2 instance id
+ * `ETCD_LISTEN_CLIENT_URLS`
+   * URL to listen on for client traffic; defaults to http://0.0.0.0:2379
+ * `ETCD_LISTEN_PEER_URLS`
+   * URL to listen on for peer traffic; defaults to http://0.0.0.0:2380
+ * `ETCD_ADVERTISE_CLIENT_URLS`
+   * URL to advertise for client traffic; defaults to http://<private-ip>:2379
+ * `ETCD_INITIAL_ADVERTISE_PEER_URLS`
+   * URL to advertise for peer traffic; defaults to http://<private-ip>:2380
+ * `ETCD_INITIAL_CLUSTER_STATE`
+   * `new` (spinning up new cluster) or `existing` (joining existing cluster)
+ * `ETCD_INITIAL_CLUSTER`
+   * comma separated list of the other members of the cluster
+
+## Permissions
+
+IAM permissions are needed to inspect the ASG and its members. The easiest way to do that
+is with an [IAM instance profile][]. An example policy is given below, but you may want to
+narrow the `Resource` to the specific ASG the instance will belong to.
+
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Stmt1456626729000",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "autoscaling:Describe*"
+      ],
+      "Resource": ["*"]
+    }
+  ]
+}
 ```
 
 ## Workflow
@@ -50,8 +95,7 @@ EnvironmentFile=/etc/sysconfig/etcd-peers
 - for each member of the autoscaling group detect if they are running etcd and
   if so who they see as members of the cluster
 
-  if no machines respond OR there are existing peers but my instance id is
-  listed as a member of the cluster
+  if no machines respond
 
     - assume that this is a new cluster
     - write a file using the ids/ips of the autoscaling group
@@ -66,21 +110,16 @@ EnvironmentFile=/etc/sysconfig/etcd-peers
     - write a file using the ids/ips obtained from query etcd for members of the
       cluster
 
-## Demo
-
-Monsanto has created a [CloudFormation script][] that shows sample usage of this
-container for creating a simple etcd cluster.
-
- [CloudFormation script]: https://gist.github.com/tj-corrigan/3baf86051471062b2fb7
-
 ## Why fork?
 
 The differences in this fork are:
 
  - Versions tagged in Git.
+ - Ported to Node.js, so I have a hope of debugging it.
  - Automatic Docker Hub builds, rebuilding whenever the base `FROM` image is
    updated, so we'll keep up to date with security patches.
- - More flexability, for cases when not using CoreOS.
+ - More flexibility, for cases when not using CoreOS.
 
  [upstream Monsanto repo]: https://github.com/MonsantoCo/etcd-aws-cluster
  [figuring out]: http://engineering.monsanto.com/2015/06/12/etcd-clustering/
+ [IAM instance profile]: http://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-ec2_instance-profiles.html

@@ -52,11 +52,11 @@ const go = async function go() {
   const myPeerListenUrl = `${config.peer.scheme}://0.0.0.0:${config.peer.port}`;
   const myClientListenUrl = `${config.client.scheme}://0.0.0.0:${config.client.port}`;
 
-  console.log(`export ETCD_NAME=${instanceId}`);
-  console.log(`export ETCD_LISTEN_PEER_URLS=${myPeerListenUrl}`);
-  console.log(`export ETCD_LISTEN_CLIENT_URLS=${myClientListenUrl}`);
-  console.log(`export ETCD_INITIAL_ADVERTISE_PEER_URLS=${myPeerUrl}`);
-  console.log(`export ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
+  console.log(`ETCD_NAME=${instanceId}`);
+  console.log(`ETCD_LISTEN_PEER_URLS=${myPeerListenUrl}`);
+  console.log(`ETCD_LISTEN_CLIENT_URLS=${myClientListenUrl}`);
+  console.log(`ETCD_INITIAL_ADVERTISE_PEER_URLS=${myPeerUrl}`);
+  console.log(`ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
 
   const autoscaling = new AWS.AutoScaling({
     apiVersion: '2011-01-01',
@@ -133,8 +133,8 @@ const go = async function go() {
     // base the cluster off of the contents of the ASG
     const cluster = _.map(asgInstances, p => `${p.instanceId}=${p.peerURL}`);
 
-    console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
-    console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
+    console.log('ETCD_INITIAL_CLUSTER_STATE=new');
+    console.log(`ETCD_INITIAL_CLUSTER=${cluster}`);
   } else {
     const memberUrl = currentCluster.memberUrl;
     let members = currentCluster.members;
@@ -188,8 +188,8 @@ const go = async function go() {
     console.error('  members', JSON.stringify(members, null, 2));
 
     const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
-    console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
-    console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
+    console.log('ETCD_INITIAL_CLUSTER_STATE=existing');
+    console.log(`ETCD_INITIAL_CLUSTER=${cluster}`);
   }
 };
 
