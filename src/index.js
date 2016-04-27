@@ -177,7 +177,7 @@ const go = async function go() {
         }),
       });
 
-      if (add.statusCode !== 201 && add.status !== 409) {
+      if (add.status !== 201 && add.status !== 409) {
         fail(`Error joining cluster: ${add.status} ${JSON.stringify(await add.text())}`);
       }
 
