@@ -4,13 +4,7 @@ import 'babel-polyfill';
 
 import AWS from 'aws-sdk';
 import _ from 'lodash';
-import _request from 'request';
 import fetch from 'node-fetch';
-import {install as installSourceMapSupport} from 'source-map-support';
-
-installSourceMapSupport();
-
-const request = _request.defaults({ json: true });
 
 const config = {
   client: {
@@ -23,17 +17,18 @@ const config = {
   },
 };
 
+process.on('exit', code => {
+  // make sure that if we exit with an error, the script we output also errors
+  if (code !== 0) {
+    console.log('false');
+  }
+});
+
 const metadata = new AWS.MetadataService();
 
 function fail(msg) {
   console.error(msg);
   process.exit(1);
-}
-
-function failOn(err) {
-  if (err) {
-    fail(err.stack);
-  }
 }
 
 const go = async function go() {
@@ -81,8 +76,8 @@ const go = async function go() {
     fail('Not a member of an auto scaling group');
   }
   const asgName = AutoScalingInstances[0].AutoScalingGroupName;
-  console.error('Finding instances in', asgName);
 
+  console.error('Finding instances in', asgName);
   const { AutoScalingGroups } =
     await autoscaling.describeAutoScalingGroups({ AutoScalingGroupNames: [asgName] }).promise();
   const asgInstanceIds = _(AutoScalingGroups[0].Instances)
@@ -91,25 +86,23 @@ const go = async function go() {
     .valueOf();
 
   if (_.isEmpty(asgInstanceIds)) {
-    fail('unable to find members of auto scaling group');
+    fail('Unable to find members of auto scaling group');
   }
 
   const { Reservations } =
     await ec2.describeInstances({ InstanceIds: asgInstanceIds }).promise();
-
-  const peers = _(Reservations).flatMap('Instances').map(instance => {
+  const asgInstances = _(Reservations).flatMap('Instances').map(instance => {
     const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
     const clientURL = `${config.client.scheme}://${privateIp}:${config.client.port}`;
     const peerURL = `${config.peer.scheme}://${privateIp}:${config.peer.port}`;
 
     return { instanceId: instance.InstanceId, clientURL, peerURL };
   }).valueOf();
+  console.error('Found peers in ASG', JSON.stringify(asgInstances, null, 2));
 
-  console.error('found peers', JSON.stringify(peers, null, 2));
-
-  const currentCluster = await _.reduce(_.map(peers, 'clientURL'), async(_prior, client) => {
+  // walk through the peers to see if any of them have a members list
+  const currentCluster = await _.reduce(_.map(asgInstances, 'clientURL'), async(_prior, client) => {
     const prior = await _prior;
-
     if (prior) {
       return prior;
     }
@@ -127,18 +120,19 @@ const go = async function go() {
       const body = await res.json();
       return { memberUrl: url, members: body.members };
     } catch (err) {
-      // if we can't reach this peer, we could be bootstrapping.
-      // return null and try the next one.
+      // it's okay if we can't reach a peer, b/c that usually just means that we're
+      // bootstrapping the cluster
       console.error('  err', err.message);
       return null;
     }
   }, null);
 
-  console.error('currentCluster', currentCluster);
   if (_.isEmpty(currentCluster)) {
-    const cluster = _.map(peers, p => `${p.instanceId}=${p.peerURL}`);
+    console.error('Creating new cluster');
 
-    console.error('creating new cluster');
+    // base the cluster off of the contents of the ASG
+    const cluster = _.map(asgInstances, p => `${p.instanceId}=${p.peerURL}`);
+
     console.log('export ETCD_INITIAL_CLUSTER_STATE=new');
     console.log(`export ETCD_INITIAL_CLUSTER=${cluster}`);
   } else {
@@ -147,18 +141,28 @@ const go = async function go() {
 
     console.error('memberUrl', memberUrl);
 
+    // If there are any members in the cluster that aren't in the ASG, those are
+    // likely decommissioned instances that need to be cleaned up.
     const badMembers =
       _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
     for (const member of badMembers) {
       console.error('Removing bad member', member);
       const res = await fetch(`${memberUrl}/v2/members/${member.id}`, { method: 'DELETE' });
       if (res.status !== 204) {
+        // If you see errors here, it's likely that the cluster has lost a quorum,
+        // and can no longer function. If you can recover some of the down instances,
+        // that would be good. If not, you'll have to recover the cluster.
+        // See https://github.com/coreos/etcd/blob/master/Documentation/admin_guide.md#disaster-recovery
+        // And some discussion at https://github.com/coreos/etcd/issues/3505
         fail(`Error deleting bad member ${await res.text()}`);
       }
     }
-    console.error('joining existing cluster');
 
-    const addRes = await fetch(memberUrl, {
+    // process documented at https://coreos.com/etcd/docs/latest/runtime-configuration.html#add-a-new-member
+
+    // Add the new member to the cluster
+    console.error('Adding self to existing cluster');
+    const add = await fetch(memberUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -167,18 +171,21 @@ const go = async function go() {
       }),
     });
 
-    if (addRes.statusCode !== 200 && addRes.status !== 409) {
-      fail(`Error joining cluster: ${addRes.status} ${JSON.stringify(await addRes.text())}`);
+    if (add.statusCode !== 200 && add.status !== 409) {
+      fail(`Error joining cluster: ${add.status} ${JSON.stringify(await add.text())}`);
     }
 
-    // re-fetch the cluster list
+    console.error(`  got id ${(await add.json()).id}`);
+
+
+    console.error('Getting existing cluster');
     const memberRes = await fetch(memberUrl);
     if (memberRes.status !== 200) {
       fail(`Error re-fetching member list: ${await memberRes.text()}`);
     }
     members = (await memberRes.json()).members;
 
-    console.error('members', JSON.stringify(members, null, 2));
+    console.error('  members', JSON.stringify(members, null, 2));
 
     const cluster = _.map(members, m => `${m.name}=${m.peerURLs[0]}`);
     console.log('export ETCD_INITIAL_CLUSTER_STATE=existing');
@@ -186,4 +193,4 @@ const go = async function go() {
   }
 };
 
-go().catch(failOn);
+go().catch(err => fail(err.stack));

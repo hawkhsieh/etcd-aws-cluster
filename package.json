@@ -7,15 +7,16 @@
     "etcd-aws-cluster": "./bin/etcd-aws-cluster.js"
   },
   "scripts": {
-    "build": "mkdir -p lib/ && babel --source-maps true --out-dir lib/ src/",
+    "build": "mkdir -p lib/ && babel --out-dir lib/ src/",
     "clean": "rm -rf lib/",
+    "prepublish": "npm run test && npm run clean && npm run build",
     "test": "eslint ."
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/building5/etcd-aws-cluster.git"
   },
-  "keywords": [],
+  "keywords": ["aws", "etcd", "cluster", "autoscaling", "asg"],
   "author": "David M. Lee, II <leedm777@yahoo.com>",
   "license": "ISC",
   "bugs": {
@@ -36,12 +37,9 @@
     "eslint-plugin-react": "^4.3.0"
   },
   "dependencies": {
-    "async": "^2.0.0-rc.3",
-    "aws-sdk": "^2.3.5",
+    "aws-sdk": "^2.3.6",
     "babel-polyfill": "^6.7.4",
     "lodash": "^4.11.1",
-    "node-fetch": "^1.5.1",
-    "request": "^2.72.0",
-    "source-map-support": "^0.4.0"
+    "node-fetch": "^1.5.1"
   }
 }
