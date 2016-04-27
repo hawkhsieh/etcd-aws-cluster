@@ -1,6 +1,6 @@
 {
   "name": "etcd-aws-cluster",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "This container serves to assist in the creation of an etcd (2.x) cluster from an AWS auto scaling group.",
   "main": "index.js",
   "bin": {
