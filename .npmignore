@@ -1,4 +1,7 @@
-.git/
-build/
+.git*
+.idea/
+Makefile
+Dockerfile
+server.js
 src/
-sever.js
+.*
