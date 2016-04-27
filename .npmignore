@@ -2,6 +2,4 @@
 .idea/
 Makefile
 Dockerfile
-server.js
-src/
-.*
+.dockerignore

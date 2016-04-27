@@ -7,7 +7,7 @@
     "etcd-aws-cluster": "./bin/etcd-aws-cluster.js"
   },
   "scripts": {
-    "build": "mkdir -p lib/ && babel --out-dir lib/ src/",
+    "build": "mkdir -p lib/ && babel --source-maps true --out-dir lib/ src/",
     "clean": "rm -rf lib/",
     "prepublish": "npm run test && npm run clean && npm run build",
     "test": "eslint ."
