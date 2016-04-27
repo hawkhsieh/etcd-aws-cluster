@@ -139,51 +139,57 @@ const go = async function go() {
     const memberUrl = currentCluster.memberUrl;
     let members = currentCluster.members;
 
+    // process documented at https://coreos.com/etcd/docs/latest/runtime-configuration.html#add-a-new-member
     console.error('memberUrl', memberUrl);
 
-    // If there are any members in the cluster that aren't in the ASG, those are
-    // likely decommissioned instances that need to be cleaned up.
-    const badMembers =
-      _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
-    for (const member of badMembers) {
-      console.error('Removing bad member', member);
-      const res = await fetch(`${memberUrl}/v2/members/${member.id}`, { method: 'DELETE' });
-      if (res.status !== 204) {
-        // If you see errors here, it's likely that the cluster has lost a quorum,
-        // and can no longer function. If you can recover some of the down instances,
-        // that would be good. If not, you'll have to recover the cluster.
-        // See https://github.com/coreos/etcd/blob/master/Documentation/admin_guide.md#disaster-recovery
-        // And some discussion at https://github.com/coreos/etcd/issues/3505
-        fail(`Error deleting bad member ${await res.text()}`);
+    // if we're already a member of the cluster, there's a good chance that it's lost quorum,
+    // and is just waiting for us to join. Skip removing bad members (since we can't if it has
+    // lost quorum) and adding self (since we're already in the cluster).
+    const alreadyJoined = _.find(members, m => m.name === instanceId);
+    if (alreadyJoined) {
+      console.error(`Already in cluster with id ${alreadyJoined.id}`);
+    } else {
+      // If there are any members in the cluster that aren't in the ASG, those are
+      // likely decommissioned instances that need to be cleaned up.
+      const badMembers =
+        _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
+      for (const member of badMembers) {
+        console.error('Removing bad member', member);
+        const res = await fetch(`${memberUrl}/v2/members/${member.id}`, { method: 'DELETE' });
+        if (res.status !== 204) {
+          // If you see errors here, it's likely that the cluster has lost a quorum,
+          // and can no longer function. If you can recover some of the down instances,
+          // that would be good. If not, you'll have to recover the cluster.
+          // See https://github.com/coreos/etcd/blob/master/Documentation/admin_guide.md#disaster-recovery
+          // And some discussion at https://github.com/coreos/etcd/issues/3505
+          fail(`Error deleting bad member ${await res.text()}`);
+        }
       }
+
+      // Add the new member to the cluster
+      console.error('Adding self to existing cluster');
+      const add = await fetch(memberUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          peerURLs: [myPeerUrl],
+          name: instanceId,
+        }),
+      });
+
+      if (add.statusCode !== 200 && add.status !== 409) {
+        fail(`Error joining cluster: ${add.status} ${JSON.stringify(await add.text())}`);
+      }
+
+      console.error(`  got id ${(await add.json()).id}`);
+
+      console.error('Getting existing cluster');
+      const memberRes = await fetch(memberUrl);
+      if (memberRes.status !== 200) {
+        fail(`Error re-fetching member list: ${await memberRes.text()}`);
+      }
+      members = (await memberRes.json()).members;
     }
-
-    // process documented at https://coreos.com/etcd/docs/latest/runtime-configuration.html#add-a-new-member
-
-    // Add the new member to the cluster
-    console.error('Adding self to existing cluster');
-    const add = await fetch(memberUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        peerURLs: [myPeerUrl],
-        name: instanceId,
-      }),
-    });
-
-    if (add.statusCode !== 200 && add.status !== 409) {
-      fail(`Error joining cluster: ${add.status} ${JSON.stringify(await add.text())}`);
-    }
-
-    console.error(`  got id ${(await add.json()).id}`);
-
-
-    console.error('Getting existing cluster');
-    const memberRes = await fetch(memberUrl);
-    if (memberRes.status !== 200) {
-      fail(`Error re-fetching member list: ${await memberRes.text()}`);
-    }
-    members = (await memberRes.json()).members;
 
     console.error('  members', JSON.stringify(members, null, 2));
 
