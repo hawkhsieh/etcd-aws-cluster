@@ -1,6 +1,6 @@
 {
   "name": "etcd-aws-cluster",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "This container serves to assist in the creation of an etcd (2.x) cluster from an AWS auto scaling group.",
   "main": "index.js",
   "bin": {
@@ -16,7 +16,13 @@
     "type": "git",
     "url": "git+https://github.com/building5/etcd-aws-cluster.git"
   },
-  "keywords": ["aws", "etcd", "cluster", "autoscaling", "asg"],
+  "keywords": [
+    "aws",
+    "etcd",
+    "cluster",
+    "autoscaling",
+    "asg"
+  ],
   "author": "David M. Lee, II <leedm777@yahoo.com>",
   "license": "ISC",
   "bugs": {
