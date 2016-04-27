@@ -155,7 +155,7 @@ const go = async function go() {
         _.filter(members, (member) => !_.includes(asgInstanceIds, member.name));
       for (const member of badMembers) {
         console.error('Removing bad member', member);
-        const res = await fetch(`${memberUrl}/v2/members/${member.id}`, { method: 'DELETE' });
+        const res = await fetch(`${memberUrl}/${member.id}`, { method: 'DELETE' });
         if (res.status !== 204) {
           // If you see errors here, it's likely that the cluster has lost a quorum,
           // and can no longer function. If you can recover some of the down instances,
