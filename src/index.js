@@ -89,8 +89,17 @@ const go = async function go() {
     fail('Unable to find members of auto scaling group');
   }
 
+  // Only look at the running/pending instances. Others are being removed from the ASG.
   const { Reservations } =
-    await ec2.describeInstances({ InstanceIds: asgInstanceIds }).promise();
+    await ec2.describeInstances({
+      InstanceIds: asgInstanceIds,
+      Filters: [
+        {
+          Name: 'instance-state-name',
+          Values: ['pending', 'running'],
+        },
+      ],
+    }).promise();
   const asgInstances = _(Reservations).flatMap('Instances').map(instance => {
     const privateIp = _(instance.NetworkInterfaces).flatMap('PrivateIpAddress').valueOf();
 
