@@ -141,11 +141,12 @@ const go = async function go() {
     }
   }, null);
 
-  // we we couldn't find a cluster, then this is new
-  // if we found one, and it already knew our name, either a) we already joined and these
-  // settings don't matter, or b) this is new
-  const alreadyKnowsMyName = _.some(currentCluster.members, m => _.includes(m.name, instanceId));
-  if (_.isEmpty(currentCluster) || alreadyKnowsMyName) {
+  // if we can't find a living member, then we can assume it's a new cluster
+  // if we found one that knows our name, then either it's a new cluster and that's from the
+  // initial cluster list, or we're restarting and these settings don't actually matter.
+  const isNewCluster = _.isEmpty(currentCluster) ||
+    _.some(currentCluster.members, m => _.includes(m.name, instanceId));
+  if (isNewCluster) {
     console.error('Creating new cluster');
 
     // base the cluster off of the contents of the ASG
