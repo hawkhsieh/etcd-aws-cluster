@@ -141,7 +141,10 @@ const go = async function go() {
     }
   }, null);
 
-  if (_.isEmpty(currentCluster)) {
+  // we we couldn't find a cluster, then this is new
+  // if we found one, and it already knew our name, either a) we already joined and these
+  // settings don't matter, or b) this is new
+  if (_.isEmpty(currentCluster) || _.some(currentCluster.members, m => _.includes(m.name, instanceId))) {
     console.error('Creating new cluster');
 
     // base the cluster off of the contents of the ASG
