@@ -25,7 +25,6 @@ function fail(msg) {
 }
 
 const go = async function go() {
-  let out = '';
   console.error('Loading instance metadata');
   const document = await new Promise((resolve, reject) => {
     metadata.request('/latest/dynamic/instance-identity/document', (err, d) => {
