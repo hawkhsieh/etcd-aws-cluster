@@ -17,13 +17,6 @@ const config = {
   },
 };
 
-process.on('exit', code => {
-  // make sure that if we exit with an error, the script we output also errors
-  if (code !== 0) {
-    console.log('false');
-  }
-});
-
 const metadata = new AWS.MetadataService();
 
 function fail(msg) {
@@ -32,6 +25,7 @@ function fail(msg) {
 }
 
 const go = async function go() {
+  let out = '';
   console.error('Loading instance metadata');
   const document = await new Promise((resolve, reject) => {
     metadata.request('/latest/dynamic/instance-identity/document', (err, d) => {
@@ -51,12 +45,6 @@ const go = async function go() {
   // listen on the any address, so it can be reached on localhost
   const myPeerListenUrl = `${config.peer.scheme}://0.0.0.0:${config.peer.port}`;
   const myClientListenUrl = `${config.client.scheme}://0.0.0.0:${config.client.port}`;
-
-  console.log(`ETCD_NAME=${instanceId}`);
-  console.log(`ETCD_LISTEN_PEER_URLS=${myPeerListenUrl}`);
-  console.log(`ETCD_LISTEN_CLIENT_URLS=${myClientListenUrl}`);
-  console.log(`ETCD_INITIAL_ADVERTISE_PEER_URLS=${myPeerUrl}`);
-  console.log(`ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
 
   const autoscaling = new AWS.AutoScaling({
     apiVersion: '2011-01-01',
@@ -218,6 +206,12 @@ const go = async function go() {
     console.log('ETCD_INITIAL_CLUSTER_STATE=existing');
     console.log(`ETCD_INITIAL_CLUSTER=${cluster}`);
   }
+
+  console.log(`ETCD_NAME=${instanceId}`);
+  console.log(`ETCD_LISTEN_PEER_URLS=${myPeerListenUrl}`);
+  console.log(`ETCD_LISTEN_CLIENT_URLS=${myClientListenUrl}`);
+  console.log(`ETCD_INITIAL_ADVERTISE_PEER_URLS=${myPeerUrl}`);
+  console.log(`ETCD_ADVERTISE_CLIENT_URLS=${myClientUrl}`);
 };
 
 go().catch(err => fail(err.stack));
