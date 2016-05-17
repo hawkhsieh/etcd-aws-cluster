@@ -218,4 +218,9 @@ ETCD_ADVERTISE_CLIENT_URLS=$etcd_advertise_client_urls
 EOF
 fi
 
+cat $etcd_peers_file_path | while read LINE;do echo "export $LINE" >> ./env ;done
+source ./env
+cd etcd-v2.3.4-linux-amd64
+./etcd
+
 exit 0
